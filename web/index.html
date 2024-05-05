@@ -1,0 +1,117 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .player {
+            background: #000;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .debug {
+            position: absolute;
+            top: 0;
+            left: 0;
+            padding: 10px;
+            background: rgba(255, 0, 0, 0.5);
+            width: 100%;
+            height: 40px;
+            box-sizing: border-box;
+            z-index: 1000;
+        }
+    </style>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+
+<body>
+    <div class="debug">
+        <span id="peer_id">***</span>
+        <input id="id_input" type="text">
+        <button id="connect_btn" disabled>连接</button>
+        <div class="screens"></div>
+    </div>
+    <video class="player"></video>
+    <script>
+        const connect_btn = document.querySelector("#connect_btn");
+        const id_input = document.querySelector("#id_input");
+        const peer_id = document.querySelector("#peer_id");
+        const screen_btns = document.querySelector(".screens");
+
+        const peer = new Peer({
+            config: {
+                // iceTransportPolicy: "relay",
+                iceServers: [
+                    { urls: "stun:119.45.26.84:3478" },
+                    { urls: "turn:119.45.26.84:3478?transport=tcp", username: "linkec", credential: "linkec" },
+                ],
+                sdpSemantics: "unified-plan"
+            }
+        });
+        peer.on('open', function (id) {
+            peer_id.innerText = id
+            connect_btn.disabled = false;
+        });
+        peer.on('call', function (call) {
+            call.answer()
+            call.on('stream', function (remoteStream) {
+                const player = document.querySelector('.player');
+                player.srcObject = remoteStream;
+                player.play();
+            });
+        })
+
+        connect_btn.addEventListener("click", function () {
+            const dc = peer.connect(id_input.value);
+            dc.on('data', function (data) {
+                console.error('on data', data);
+                switch (data.action) {
+                    case 'get-screens':
+                        screen_btns.innerHTML = '';
+                        for (const screen of data.data) {
+                            const btn = document.createElement('button');
+                            btn.innerText = screen.name;
+                            btn.dataset.id = screen.id;
+                            btn.addEventListener('click', function () {
+                                dc.send({
+                                    action: 'start-stream',
+                                    data: screen.id
+                                });
+                            });
+                            screen_btns.appendChild(btn);
+                        }
+                        break;
+                    default:
+                        console.error('unkown action', data);
+                        break;
+                }
+            });
+        });
+        function createEmptyVideoTrack({ width, height }) {
+            const canvas = Object.assign(document.createElement('canvas'), { width, height });
+            canvas.getContext('2d').fillRect(0, 0, width, height);
+
+            const stream = canvas.captureStream();
+            const track = stream.getVideoTracks()[0];
+
+            return Object.assign(track, { enabled: false });
+        };
+    </script>
+</body>
+
+</html>

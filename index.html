@@ -1,19 +1,123 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8">
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
-    <link href="./styles.css" rel="stylesheet">
-    <title>Hello World!</title>
-  </head>
-  <body>
-    <h1>Hello World!</h1>
-    We are using Node.js <span id="node-version"></span>,
-    Chromium <span id="chrome-version"></span>,
-    and Electron <span id="electron-version"></span>.
 
-    <!-- You can also require other files to run in this process -->
-    <script src="./renderer.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <link href="./styles.css" rel="stylesheet">
+  <title>Hello World!</title>
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+
+<body>
+  <!-- <video class="player"></video> -->
+  <!-- <div class="controls"> -->
+  <!-- </div> -->
+  <h1>ID: <span id="peer_id">***</span></h1>
+  <script>
+    const peer = new Peer({
+      config: {
+        // iceTransportPolicy: "relay",
+        iceServers: [
+          { urls: "stun:119.45.26.84:3478" },
+          { urls: "turn:119.45.26.84:3478", username: "linkec", credential: "linkec" },
+        ],
+        sdpSemantics: "unified-plan"
+      }
+    });
+    const rdp = {
+      screens: [],
+    }
+    peer.on('open', function (id) {
+      document.querySelector("#peer_id").innerText = id
+    });
+
+    peer.on('connection', function (dc) {
+      dc.on('open', function () {
+        dc.send({
+          action: 'get-screens',
+          data: rdp.screens
+        });
+      });
+
+      dc.on('data', function (data) {
+        switch (data.action) {
+          case 'start-stream':
+            console.log('start-stream', data.data)
+            navigator.mediaDevices.getUserMedia({
+              video: {
+                mandatory: {
+                  chromeMediaSource: "desktop",
+                  chromeMediaSourceId: data.data,
+                  frameRate: {
+                    min: 24,
+                    max: 30
+                  },
+                }
+              }
+            }).then(stream => {
+              const call = peer.call(dc.peer, stream)
+
+              const setBitrate = () => {
+                const senders = call.peerConnection.getSenders()
+                console.log("senders", senders)
+                const vid_sender = senders.filter(s => s.track?.kind == "video")[0]
+                console.log("vid_sender", vid_sender)
+                if (!vid_sender) {
+                  setTimeout(setBitrate, 1e3);
+                  return
+                }
+                const vid_params = vid_sender.getParameters()
+                if ("degradationPreference" in vid_params) {
+                  // So that the webrtc implementation doesn't alter the framerate - this is optional
+                  vid_params.degradationPreference = "maintain-framerate"
+                }
+
+                // Set a base encoding setup if there isn't one already
+                vid_params.encodings == vid_params.encodings ?? [{ maxBitrate: 0 }]
+                vid_params.encodings[0].maxBitrate = 50 * 1000 * 1000 // For a 4mbps stream; the value is in bps
+                vid_params.encodings[0].scaleResolutionDownBy = 1.0 // This is optional
+                vid_params.encodings[0].priority = "high" // This is optional
+
+                // Set the new bitrate
+                vid_sender.setParameters(vid_params)
+                console.log("Set bitrate to 20mbps")
+              }
+
+              setTimeout(setBitrate, 1e3);
+            })
+            break;
+          default:
+            console.error('unkown action', data);
+            break;
+        }
+      });
+    });
+
+    window.electronAPI.getSources().then(screens => {
+      rdp.screens = screens
+    })
+
+    async function startStream(sourceId) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: sourceId,
+            frameRate: {
+              min: 24,
+              max: 30
+            },
+          }
+        }
+      })
+      const video = document.querySelector(".player")
+      video.srcObject = stream
+      video.play()
+    }
+
+  </script>
+  <!-- You can also require other files to run in this process -->
+  <script src="./renderer.js"></script>
+</body>
+
 </html>

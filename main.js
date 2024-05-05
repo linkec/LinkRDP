@@ -1,8 +1,8 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, desktopCapturer, ipcMain } = require('electron')
 const path = require('node:path')
 
-function createWindow () {
+function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
@@ -13,10 +13,26 @@ function createWindow () {
   })
 
   // and load the index.html of the app.
+  mainWindow.webContents.openDevTools()
   mainWindow.loadFile('index.html')
 
-  // Open the DevTools.
-  // mainWindow.webContents.openDevTools()
+  ipcMain.handle('tools:get-sources', async (event, args) => {
+    return await desktopCapturer.getSources({
+      types: ['screen'], thumbnailSize: {
+        width: 0,
+        height: 0
+      }
+    }).then(async sources => {
+      const data = []
+      for (const source of sources) {
+        data.push({
+          id: source.id,
+          name: source.name,
+        })
+      }
+      return data
+    })
+  })
 }
 
 // This method will be called when Electron has finished
