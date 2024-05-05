@@ -14,7 +14,7 @@
   <!-- </div> -->
   <h1>ID: <span id="peer_id">***</span></h1>
   <script>
-    const peer = new Peer({
+    const peer = new Peer('4556342d-67ea-4e64-aaff-dd7d1d0c3fb5', {
       config: {
         // iceTransportPolicy: "relay",
         iceServers: [
@@ -44,6 +44,11 @@
           case 'start-stream':
             console.log('start-stream', data.data)
             navigator.mediaDevices.getUserMedia({
+              audio: {
+                mandatory: {
+                  chromeMediaSource: "desktop",
+                }
+              },
               video: {
                 mandatory: {
                   chromeMediaSource: "desktop",
@@ -85,6 +90,9 @@
 
               setTimeout(setBitrate, 1e3);
             })
+            break;
+          case 'mouse-move':
+            window.electronAPI.mouseMove(data.data.x, data.data.y)
             break;
           default:
             console.error('unkown action', data);

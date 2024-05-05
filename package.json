@@ -18,5 +18,8 @@
   "license": "CC0-1.0",
   "devDependencies": {
     "electron": "^30.0.2"
+  },
+  "dependencies": {
+    "@nut-tree/nut-js": "^3.1.2"
   }
 }

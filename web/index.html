@@ -6,7 +6,7 @@
     <title>Document</title>
     <style>
         body {
-            background: #000;
+            background: #333;
             color: #fff;
             font-family: Arial, sans-serif;
             font-size: 16px;
@@ -15,14 +15,6 @@
             overflow: hidden;
         }
 
-        .player {
-            background: #000;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
 
         .debug {
             position: absolute;
@@ -34,6 +26,23 @@
             height: 40px;
             box-sizing: border-box;
             z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+
+        .container {
+            position: relative;
+            margin-top: 40px;
+            width: 100%;
+            height: calc(100vh - 40px);
+        }
+
+        .player {
+            background: #000;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
     </style>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -42,16 +51,61 @@
 <body>
     <div class="debug">
         <span id="peer_id">***</span>
-        <input id="id_input" type="text">
+        <input id="id_input" type="text" value="4556342d-67ea-4e64-aaff-dd7d1d0c3fb5">
         <button id="connect_btn" disabled>连接</button>
+        <button id="test_btn">测试</button>
         <div class="screens"></div>
     </div>
-    <video class="player"></video>
+    <div class="container">
+        <video class="player"></video>
+    </div>
     <script>
+        const test_btn = document.querySelector("#test_btn");
         const connect_btn = document.querySelector("#connect_btn");
         const id_input = document.querySelector("#id_input");
         const peer_id = document.querySelector("#peer_id");
         const screen_btns = document.querySelector(".screens");
+        const player = document.querySelector('.player');
+
+        const resize = () => {
+            const { videoWidth, videoHeight } = player;
+
+            const viewWidth = window.innerWidth;
+            const viewHeight = window.innerHeight;
+
+            if (viewWidth / viewHeight > videoWidth / videoHeight) {
+                player.style.width = viewHeight * videoWidth / videoHeight + 'px';
+                player.style.height = viewHeight + 'px';
+            } else {
+                player.style.width = viewWidth + 'px';
+                player.style.height = viewWidth * videoHeight / videoWidth + 'px';
+            }
+        }
+        test_btn.addEventListener("click", function () {
+
+        });
+
+        const rctl = {
+            dc: null,
+            mousemove: () => { },
+            loadedmetadata: () => {
+                resize();
+                rctl.mousemove = function (e) {
+                    const { clientWidth, clientHeight, videoWidth, videoHeight } = player;
+                    const x = e.offsetX / clientWidth * videoWidth;
+                    const y = e.offsetY / clientHeight * videoHeight;
+                    // console.log('e.offsetX / width * videoWidth', e.offsetX , clientWidth , videoWidth);
+                    // console.log('e.offsetY / height * videoHeight', e.offsetY , clientHeight , videoHeight);
+                    // console.log('mousemove', x, y);
+                    rctl.dc && rctl.dc.send({
+                        action: 'mouse-move',
+                        data: { x, y }
+                    });
+                }
+            }
+        }
+        player.addEventListener('mousemove', (e) => { rctl.mousemove(e) });
+        player.addEventListener('loadedmetadata', (e) => { rctl.loadedmetadata(e) });
 
         const peer = new Peer({
             config: {
@@ -70,7 +124,7 @@
         peer.on('call', function (call) {
             call.answer()
             call.on('stream', function (remoteStream) {
-                const player = document.querySelector('.player');
+                const width = window.innerWidth;
                 player.srcObject = remoteStream;
                 player.play();
             });
@@ -78,6 +132,7 @@
 
         connect_btn.addEventListener("click", function () {
             const dc = peer.connect(id_input.value);
+            rctl.dc = dc;
             dc.on('data', function (data) {
                 console.error('on data', data);
                 switch (data.action) {

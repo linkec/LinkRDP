@@ -1,12 +1,49 @@
 // Modules to control application life and create native browser window
 const { app, BrowserWindow, desktopCapturer, ipcMain } = require('electron')
+const { mouse, Point, keyboard } = require("@nut-tree/nut-js")
+const http = require('http');
+const fs = require('fs');
+
+
 const path = require('node:path')
+
+function createWebRTCWindow() {
+  const mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+
+  })
+  // 移动到最左边
+  mainWindow.setPosition(0, 0)
+
+  // and load the index.html of the app.
+  mainWindow.loadURL('chrome://webrtc-internals')
+}
+
+function createWebService() {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    fs.readFile('./web/index.html', (err, data) => {
+      if (err) {
+        res.writeHead(404);
+        res.write('File not found!');
+      } else {
+        res.write(data);
+      }
+      res.end();
+    });
+  });
+
+  server.listen(5500);
+  console.log('Server is listening on port 5500');
+}
 
 function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     }
@@ -15,6 +52,8 @@ function createWindow() {
   // and load the index.html of the app.
   mainWindow.webContents.openDevTools()
   mainWindow.loadFile('index.html')
+
+  // mouse.move(new Point(100, 100));
 
   ipcMain.handle('tools:get-sources', async (event, args) => {
     return await desktopCapturer.getSources({
@@ -33,6 +72,22 @@ function createWindow() {
       return data
     })
   })
+
+  ipcMain.on('mouse-move', (event, args) => {
+    mouse.move(new Point(args.x, args.y));
+  })
+
+  ipcMain.on('mouse-lclick', (event, args) => {
+    mouse.leftClick();
+  })
+
+  ipcMain.on('mouse-rclick', (event, args) => {
+    mouse.rightClick();
+  })
+
+  ipcMain.on('mouse-dclick', (event, args) => {
+    mouse.doubleClick();
+  })
 }
 
 // This method will be called when Electron has finished
@@ -40,6 +95,8 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   createWindow()
+  createWebRTCWindow()
+  createWebService()
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

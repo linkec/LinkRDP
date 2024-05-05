@@ -12,5 +12,6 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   getSources: async () => {
     return await ipcRenderer.invoke('tools:get-sources')
-  }
+  },
+  mouseMove: (x, y) => ipcRenderer.send('mouse-move', { x, y })
 })
