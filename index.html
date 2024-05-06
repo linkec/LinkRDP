@@ -4,17 +4,52 @@
 <head>
   <meta charset="UTF-8">
   <link href="./styles.css" rel="stylesheet">
-  <title>Hello World!</title>
+  <title>JSOpenRDP</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    .container {
+      padding: 20px;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    li {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
 </head>
 
 <body>
   <!-- <video class="player"></video> -->
   <!-- <div class="controls"> -->
   <!-- </div> -->
-  <h1>ID: <span id="peer_id">***</span></h1>
+  <div class="container">
+    <h1>设备代码: <span id="peer_id">***</span></h1>
+    <h1>临时密码: <span id="password">***</span></h1>
+    <ul id="connections">
+      <!-- <li>
+        <span>123</span>
+        <button>断开</button>
+      </li> -->
+    </ul>
+  </div>
   <script>
-    const peer = new Peer('4556342d-67ea-4e64-aaff-dd7d1d0c3fb5', {
+    const rdp = {
+      password: Math.random().toString(36).substring(2, 8),
+      screens: [],
+      connections: {}
+    }
+
+    const peer = new Peer({
+      key: 'client',
+      host: 'peerjs.vk.cool',
+      secure: true,
       config: {
         // iceTransportPolicy: "relay",
         iceServers: [
@@ -24,80 +59,134 @@
         sdpSemantics: "unified-plan"
       }
     });
-    const rdp = {
-      screens: [],
-    }
     peer.on('open', function (id) {
       document.querySelector("#peer_id").innerText = id
+      document.querySelector("#password").innerText = rdp.password
     });
 
+    function processMessage(conn, data) {
+      const dc = conn.dc
+
+      switch (data.action) {
+        case 'auth':
+          if (data.data && data.data !== rdp.password) {
+            dc.send({
+              action: 'auth-failed',
+              data: '密码错误'
+            });
+            return
+          }
+
+          if (!data.data) {
+            if (!confirm('是否允许连接？')) {
+              dc.send({
+                action: 'auth-failed',
+                data: '拒绝连接'
+              });
+              return
+            }
+          }
+
+          dc.send({
+            action: 'get-screens',
+            data: rdp.screens
+          });
+          rdp.connections[conn.peerId] = conn
+          renderConnections()
+          if (rdp.screens.length > 0) {
+            processMessage(conn, {
+              action: 'start-stream',
+              data: rdp.screens[0].id
+            })
+          }
+          break;
+        case 'start-stream':
+          navigator.mediaDevices.getUserMedia({
+            // audio: {
+            //   mandatory: {
+            //     chromeMediaSource: "desktop",
+            //   }
+            // },
+            video: {
+              mandatory: {
+                cursor: "never",
+                chromeMediaSource: "desktop",
+                chromeMediaSourceId: data.data,
+                frameRate: {
+                  min: 24,
+                  max: 30
+                },
+              }
+            }
+          }).then(stream => {
+            conn.call && conn.call.close()
+
+            const screen = rdp.screens.find(s => s.id == data.data)
+            const call = peer.call(conn.peerId, stream)
+
+            conn.call = call
+            conn.screen = screen
+
+            const setBitrate = () => {
+              const senders = call.peerConnection.getSenders()
+              const vid_sender = senders.filter(s => s.track?.kind == "video")[0]
+              if (!vid_sender) {
+                setTimeout(setBitrate, 1e3);
+                return
+              }
+              const vid_params = vid_sender.getParameters()
+              if ("degradationPreference" in vid_params) {
+                // So that the webrtc implementation doesn't alter the framerate - this is optional
+                vid_params.degradationPreference = "maintain-framerate"
+              }
+
+              // Set a base encoding setup if there isn't one already
+              vid_params.encodings == vid_params.encodings ?? [{ maxBitrate: 0 }]
+              vid_params.encodings[0].maxBitrate = 50 * 1000 * 1000 // For a 4mbps stream; the value is in bps
+              vid_params.encodings[0].scaleResolutionDownBy = 1.0 // This is optional
+              vid_params.encodings[0].priority = "high" // This is optional
+
+              // Set the new bitrate
+              vid_sender.setParameters(vid_params)
+              console.log("Set bitrate to 20mbps")
+            }
+
+            setTimeout(setBitrate, 1e3);
+          })
+          break;
+        case 'mouse-move':
+          // if (conn.screen) {
+          //   const { bounds } = conn.screen
+          //   window.electronAPI.mouseMove(data.data.x + bounds.x, data.data.y + bounds.y)
+          // }
+          break;
+        case 'mouse-lclick':
+          console.log('mouse-lclick')
+          // window.electronAPI.mouseLClick()
+          break;
+        case 'mouse-rclick':
+          console.log('mouse-lclick')
+          // window.electronAPI.mouseRClick()
+          break;
+        case 'mouse-drag':
+          console.log('mouse-drag')
+          break;
+        default:
+          console.error('unkown action', data);
+          break;
+      }
+    }
+
     peer.on('connection', function (dc) {
-      dc.on('open', function () {
-        dc.send({
-          action: 'get-screens',
-          data: rdp.screens
-        });
-      });
+      const peerId = dc.peer
+      const conn = {
+        peerId,
+        dc,
+        call: null
+      }
 
       dc.on('data', function (data) {
-        switch (data.action) {
-          case 'start-stream':
-            console.log('start-stream', data.data)
-            navigator.mediaDevices.getUserMedia({
-              audio: {
-                mandatory: {
-                  chromeMediaSource: "desktop",
-                }
-              },
-              video: {
-                mandatory: {
-                  chromeMediaSource: "desktop",
-                  chromeMediaSourceId: data.data,
-                  frameRate: {
-                    min: 24,
-                    max: 30
-                  },
-                }
-              }
-            }).then(stream => {
-              const call = peer.call(dc.peer, stream)
-
-              const setBitrate = () => {
-                const senders = call.peerConnection.getSenders()
-                console.log("senders", senders)
-                const vid_sender = senders.filter(s => s.track?.kind == "video")[0]
-                console.log("vid_sender", vid_sender)
-                if (!vid_sender) {
-                  setTimeout(setBitrate, 1e3);
-                  return
-                }
-                const vid_params = vid_sender.getParameters()
-                if ("degradationPreference" in vid_params) {
-                  // So that the webrtc implementation doesn't alter the framerate - this is optional
-                  vid_params.degradationPreference = "maintain-framerate"
-                }
-
-                // Set a base encoding setup if there isn't one already
-                vid_params.encodings == vid_params.encodings ?? [{ maxBitrate: 0 }]
-                vid_params.encodings[0].maxBitrate = 50 * 1000 * 1000 // For a 4mbps stream; the value is in bps
-                vid_params.encodings[0].scaleResolutionDownBy = 1.0 // This is optional
-                vid_params.encodings[0].priority = "high" // This is optional
-
-                // Set the new bitrate
-                vid_sender.setParameters(vid_params)
-                console.log("Set bitrate to 20mbps")
-              }
-
-              setTimeout(setBitrate, 1e3);
-            })
-            break;
-          case 'mouse-move':
-            window.electronAPI.mouseMove(data.data.x, data.data.y)
-            break;
-          default:
-            console.error('unkown action', data);
-            break;
-        }
+        processMessage(conn, data)
       });
     });
 
@@ -105,22 +194,26 @@
       rdp.screens = screens
     })
 
-    async function startStream(sourceId) {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: sourceId,
-            frameRate: {
-              min: 24,
-              max: 30
-            },
-          }
-        }
-      })
-      const video = document.querySelector(".player")
-      video.srcObject = stream
-      video.play()
+    function renderConnections() {
+      const connections = document.querySelector("#connections")
+      connections.innerHTML = ''
+      for (const peerId in rdp.connections) {
+        const peer = rdp.connections[peerId]
+        const li = document.createElement('li')
+        const span = document.createElement('span')
+        const btn = document.createElement('button')
+        span.innerText = peerId
+        btn.innerText = '断开'
+        btn.addEventListener('click', function () {
+          peer.dc && peer.dc.close()
+          peer.call && peer.call.close()
+          delete rdp.connections[peerId]
+          renderConnections()
+        })
+        li.appendChild(span)
+        li.appendChild(btn)
+        connections.appendChild(li)
+      }
     }
 
   </script>

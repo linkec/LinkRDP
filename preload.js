@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSources: async () => {
     return await ipcRenderer.invoke('tools:get-sources')
   },
-  mouseMove: (x, y) => ipcRenderer.send('mouse-move', { x, y })
+  mouseMove: (x, y) => ipcRenderer.send('mouse-move', { x, y }),
+  mouseLClick: () => ipcRenderer.send('mouse-lclick'),
+  mouseRClick: () => ipcRenderer.send('mouse-rclick')
 })

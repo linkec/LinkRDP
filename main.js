@@ -1,5 +1,5 @@
 // Modules to control application life and create native browser window
-const { app, BrowserWindow, desktopCapturer, ipcMain } = require('electron')
+const { app, BrowserWindow, desktopCapturer, ipcMain, screen } = require('electron')
 const { mouse, Point, keyboard } = require("@nut-tree/nut-js")
 const http = require('http');
 const fs = require('fs');
@@ -22,16 +22,28 @@ function createWebRTCWindow() {
 
 function createWebService() {
   const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    fs.readFile('./web/index.html', (err, data) => {
+    const target = req.url === '/' ? '/index.html' : req.url;
+    fs.readFile(path.join(__dirname, 'web', target), (err, data) => {
       if (err) {
-        res.writeHead(404);
-        res.write('File not found!');
-      } else {
-        res.write(data);
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        return res.end('404 Not Found');
       }
-      res.end();
-    });
+
+      const mime = {
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'text/javascript',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      }
+      const ext = path.extname(target);
+      res.writeHead(200, { 'Content-Type': mime[ext] || 'text/html' });
+      res.write(data);
+      return res.end();
+    })
   });
 
   server.listen(5500);
@@ -44,13 +56,14 @@ function createWindow() {
     width: 800,
     height: 600,
     show: true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js')
     }
   })
 
   // and load the index.html of the app.
-  mainWindow.webContents.openDevTools()
+  // mainWindow.webContents.openDevTools()
   mainWindow.loadFile('index.html')
 
   // mouse.move(new Point(100, 100));
@@ -62,13 +75,21 @@ function createWindow() {
         height: 0
       }
     }).then(async sources => {
+      const displays = screen.getAllDisplays();
+      // console.log({ displays })
+      // console.log({ sources })
+
       const data = []
       for (const source of sources) {
+        const display = displays.find(display => display.id.toString() === source.display_id)
         data.push({
           id: source.id,
           name: source.name,
+          bounds: display.bounds,
         })
       }
+
+      console.log(data)
       return data
     })
   })
@@ -95,7 +116,7 @@ function createWindow() {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   createWindow()
-  createWebRTCWindow()
+  // createWebRTCWindow()
   createWebService()
 
   app.on('activate', function () {

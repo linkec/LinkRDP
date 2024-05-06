@@ -44,28 +44,92 @@
             left: 50%;
             transform: translate(-50%, -50%);
         }
+
+        #status {
+            width: 120px;
+            line-height: 20px;
+        }
+
+        .modal {
+            position: absolute;
+            display: none;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.5);
+            width: 100%;
+            height: 100%;
+            z-index: 1001;
+        }
+
+        .modal.show {
+            display: block;
+        }
+
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            color: #333;
+
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+
+        }
+
+        #password,
+        #deviceId {
+            width: 100%;
+            height: 30px;
+            padding: 0 10px;
+            box-sizing: border-box;
+            outline: none;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            outline: none;
+        }
     </style>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="peerjs.min.js"></script>
 </head>
 
 <body>
     <div class="debug">
-        <span id="peer_id">***</span>
-        <input id="id_input" type="text" value="4556342d-67ea-4e64-aaff-dd7d1d0c3fb5">
+        <span id="status">初始化...</span>
+        <!-- <input id="id_input" type="text" value="4556342d-67ea-4e64-aaff-dd7d1d0c3fb5">
         <button id="connect_btn" disabled>连接</button>
-        <button id="test_btn">测试</button>
+        <button id="test_btn">测试</button> -->
         <div class="screens"></div>
     </div>
     <div class="container">
         <video class="player"></video>
     </div>
+    <div id="auth-modal" class="modal">
+        <div class="modal-content" style="width:320px;padding:20px">
+            <span>连接</span>
+            <input type="text" id="deviceId" placeholder="请输入设备代码">
+            <input type="text" id="password" placeholder="请输入密码">
+            <button id="connect_btn_auth">连接</button>
+        </div>
+    </div>
     <script>
-        const test_btn = document.querySelector("#test_btn");
-        const connect_btn = document.querySelector("#connect_btn");
-        const id_input = document.querySelector("#id_input");
-        const peer_id = document.querySelector("#peer_id");
+        // const test_btn = document.querySelector("#test_btn");
+        // const connect_btn = document.querySelector("#connect_btn");
+        // const id_input = document.querySelector("#id_input");
+        const status = document.querySelector("#status");
         const screen_btns = document.querySelector(".screens");
         const player = document.querySelector('.player');
+
+        const authModal = document.querySelector('#auth-modal');
+        const deviceId = document.querySelector('#deviceId');
+        const password = document.querySelector('#password');
+        const connect_btn_auth = document.querySelector('#connect_btn_auth');
 
         const resize = () => {
             const { videoWidth, videoHeight } = player;
@@ -81,33 +145,41 @@
                 player.style.height = viewWidth * videoHeight / videoWidth + 'px';
             }
         }
-        test_btn.addEventListener("click", function () {
+        // test_btn.addEventListener("click", function () {
 
-        });
+        // });
 
+        function scalePoint(offsetX, offsetY) {
+            const { clientWidth, clientHeight, videoWidth, videoHeight } = player;
+            const x = offsetX / clientWidth * videoWidth;
+            const y = offsetY / clientHeight * videoHeight;
+
+            return { x, y }
+        }
         const rctl = {
             dc: null,
             mousemove: () => { },
+            mousedrag: () => { },
             loadedmetadata: () => {
                 resize();
                 rctl.mousemove = function (e) {
-                    const { clientWidth, clientHeight, videoWidth, videoHeight } = player;
-                    const x = e.offsetX / clientWidth * videoWidth;
-                    const y = e.offsetY / clientHeight * videoHeight;
-                    // console.log('e.offsetX / width * videoWidth', e.offsetX , clientWidth , videoWidth);
-                    // console.log('e.offsetY / height * videoHeight', e.offsetY , clientHeight , videoHeight);
-                    // console.log('mousemove', x, y);
                     rctl.dc && rctl.dc.send({
                         action: 'mouse-move',
-                        data: { x, y }
+                        data: scalePoint(e.offsetX, e.offsetY)
                     });
                 }
             }
         }
         player.addEventListener('mousemove', (e) => { rctl.mousemove(e) });
+        player.addEventListener('drag', (e) => { 
+            console.log('drag', e);
+        });
         player.addEventListener('loadedmetadata', (e) => { rctl.loadedmetadata(e) });
 
         const peer = new Peer({
+            key: 'web',
+            host: 'peerjs.vk.cool',
+            secure: true,
             config: {
                 // iceTransportPolicy: "relay",
                 iceServers: [
@@ -115,11 +187,11 @@
                     { urls: "turn:119.45.26.84:3478?transport=tcp", username: "linkec", credential: "linkec" },
                 ],
                 sdpSemantics: "unified-plan"
-            }
+            },
         });
         peer.on('open', function (id) {
-            peer_id.innerText = id
-            connect_btn.disabled = false;
+            status.innerText = '已就绪'
+            authModal.classList.add('show');
         });
         peer.on('call', function (call) {
             call.answer()
@@ -130,13 +202,39 @@
             });
         })
 
-        connect_btn.addEventListener("click", function () {
-            const dc = peer.connect(id_input.value);
+        connect_btn_auth.addEventListener("click", function () {
+            connectRDP({
+                peerId: deviceId.value,
+                password: password.value
+            })
+        });
+
+        function connectRDP(params) {
+            status.innerText = '连接中...'
+            const dc = peer.connect(params.peerId);
             rctl.dc = dc;
+            dc.on('open', function () {
+                status.innerText = '认证中...'
+                dc.send({
+                    action: 'auth',
+                    data: params.password
+                });
+            });
+
             dc.on('data', function (data) {
                 console.error('on data', data);
                 switch (data.action) {
+                    case 'auth-failed':
+                        status.innerText = '已就绪'
+                        alert(data.data);
+                        return;
+                        break;
                     case 'get-screens':
+                        if (authModal.classList.contains('show')) {
+                            authModal.classList.remove('show');
+                            status.innerText = '已连接'
+                        }
+
                         screen_btns.innerHTML = '';
                         for (const screen of data.data) {
                             const btn = document.createElement('button');
@@ -156,7 +254,8 @@
                         break;
                 }
             });
-        });
+        }
+
         function createEmptyVideoTrack({ width, height }) {
             const canvas = Object.assign(document.createElement('canvas'), { width, height });
             canvas.getContext('2d').fillRect(0, 0, width, height);
