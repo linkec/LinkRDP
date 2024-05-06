@@ -159,6 +159,8 @@
         const rctl = {
             dc: null,
             mousemove: () => { },
+            mouselclick: () => { },
+            mouserclick: () => { },
             mousedrag: () => { },
             loadedmetadata: () => {
                 resize();
@@ -168,13 +170,26 @@
                         data: scalePoint(e.offsetX, e.offsetY)
                     });
                 }
+                rctl.mouselclick = function (e) {
+                    rctl.dc && rctl.dc.send({
+                        action: 'mouse-lclick'
+                    });
+                }
+                rctl.mouserclick = function (e) {
+                    rctl.dc && rctl.dc.send({
+                        action: 'mouse-rclick'
+                    });
+                }
             }
         }
         player.addEventListener('mousemove', (e) => { rctl.mousemove(e) });
-        player.addEventListener('drag', (e) => { 
+        player.addEventListener('click', (e) => { rctl.mouselclick(e) });
+        player.addEventListener('contextmenu', (e) => { e.preventDefault(); rctl.mouserclick(e) });
+        player.addEventListener('drag', (e) => {
             console.log('drag', e);
         });
         player.addEventListener('loadedmetadata', (e) => { rctl.loadedmetadata(e) });
+        window.addEventListener('resize', () => { resize() });
 
         const peer = new Peer({
             key: 'web',
